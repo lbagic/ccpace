@@ -1,0 +1,29 @@
+{
+  "name": "ccpace",
+  "version": "1.0.0",
+  "description": "Claude Code usage pacing dashboard for your terminal",
+  "main": "pace.js",
+  "bin": {
+    "ccpace": "./pace.js"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "usage",
+    "pacing",
+    "dashboard",
+    "cli"
+  ],
+  "author": "bax",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lbagic/ccpace.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "pace.js"
+  ]
+}
