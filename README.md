@@ -10,12 +10,10 @@ npx ccpace
 
 ```
 5h  ██████████████████████████████████████░░░░░░▓░░░░░░
-    78% used · 88.2% expected · 10.2% under budget
-    35m left · 22% remaining · 0.0h per 1%
+    78% used            10.2% under            35m left
 
 7d  █████████████████████████████████████░░▓░░░░░░░░░░░
-    74% used · 79.4% expected · 5.4% under budget
-    1d 10h left · 26% remaining · 1.3h per 1%
+    74% used            5.4% under          1d 10h left
 ```
 
 **Green** = under budget. **Red** = over budget. The `▓` marker shows where you *should* be based on time elapsed.
