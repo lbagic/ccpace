@@ -1,6 +1,6 @@
 {
   "name": "ccpace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Claude Code usage pacing dashboard for your terminal",
   "main": "pace.js",
   "bin": {
