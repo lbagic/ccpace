@@ -63,10 +63,8 @@ function computePacing(utilization, resetsAt, cycleHours) {
   const hoursElapsed = cycleHours - hoursLeft;
   const pctElapsed = Math.min(100, (hoursElapsed / cycleHours) * 100);
   const diff = utilization - pctElapsed;
-  const pctRemaining = 100 - utilization;
-  const hoursPerPct = pctRemaining > 0 ? hoursLeft / pctRemaining : 0;
 
-  return { hoursLeft, pctElapsed, diff, pctRemaining, hoursPerPct };
+  return { hoursLeft, pctElapsed, diff };
 }
 
 // ── Progress bar ────────────────────────────────────────────────────
@@ -109,15 +107,29 @@ function displayWindow(label, utilization, resetsAt, cycleHours) {
     return;
   }
 
-  const { hoursLeft, pctElapsed, diff, pctRemaining, hoursPerPct } = pacing;
+  const { hoursLeft, pctElapsed, diff } = pacing;
 
+  const barWidth = 50;
+  const indent = "    ";
+
+  // Row 1: label + progress bar
   console.log(`${label}  ${progressBar(utilization, pctElapsed)}`);
+
+  // Row 2: used (left) · over/under (center) · time left (right)
   const color = diff >= 0 ? "31" : "32";
+  const diffLabel = diff >= 0 ? "over" : "under";
+  const leftStr = `${utilization}% used`;
+  const centerStr = `${Math.abs(diff).toFixed(1)}% ${diffLabel}`;
+  const rightStr = `${formatCountdown(hoursLeft)} left`;
+
+  const totalText = leftStr.length + centerStr.length + rightStr.length;
+  const totalGap = barWidth - totalText;
+  const leftGap = Math.max(1, Math.floor(totalGap / 2));
+  const rightGap = Math.max(1, totalGap - leftGap);
+
+  const centerAnsi = `\x1b[${color}m${centerStr}\x1b[0m`;
   console.log(
-    `    \x1b[${color}m${utilization}% used \u00b7 ${pctElapsed.toFixed(1)}% expected \u00b7 ${Math.abs(diff).toFixed(1)}% ${diff >= 0 ? "over" : "under"} budget\x1b[0m`,
-  );
-  console.log(
-    `    ${formatCountdown(hoursLeft)} left \u00b7 ${pctRemaining}% remaining \u00b7 ${hoursPerPct.toFixed(1)}h per 1%`,
+    `${indent}${leftStr}${" ".repeat(leftGap)}${centerAnsi}${" ".repeat(rightGap)}${rightStr}`,
   );
 }
 
