@@ -9,18 +9,19 @@ npx ccpace
 ## Example
 
 ```
-5h  ██████████████████████████████████████░░░░░░▓░░░░░░
-    78% used            10.2% under            35m left
-
-7d  █████████████████████████████████████░░▓░░░░░░░░░░░
-    74% used            5.4% under          1d 10h left
+you@example.com [Your Organization]
+  ├ 5h:    31%   resets 19:09        in 4h 0m   11% ahead of pace
+  ├ 7d:    67%   resets Sep 3 09:59  in 1d 18h
+  └ Fable: 38%   resets Sep 3 09:59  in 1d 18h
 ```
 
-**Green** = under budget. **Red** = over budget. The `▓` marker shows where you *should* be based on time elapsed.
+A window is only flagged when you're **ahead of pace** — burning it faster than the clock is running it down. Windows you're comfortably under stay quiet.
 
 ## How it works
 
-Reads your Claude Code OAuth credentials and hits the usage API. Shows your 5-hour and 7-day windows with a pacing bar so you can tell at a glance if you need to slow down.
+Reads your Claude Code OAuth credentials and hits the usage API. Lists every active limit window — the 5-hour session, the 7-day total, and any model-scoped weekly limits — with how much you've used and when it resets.
+
+Colors are dropped automatically when output is piped, or when `NO_COLOR` is set.
 
 ## Install
 

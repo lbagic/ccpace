@@ -10,6 +10,17 @@ const os = require("os");
 const fs = require("fs");
 const path = require("path");
 
+const { version } = require("./package.json");
+
+// Cycle length per limit group, used to work out how much of the window
+// has elapsed. A group missing here still renders, just without pacing.
+const CYCLE_HOURS = { session: 5, weekly: 7 * 24 };
+
+const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
+const paint = (code, s) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
+const dim = (s) => paint(2, s);
+const red = (s) => paint(31, s);
+
 // ── Credentials ─────────────────────────────────────────────────────
 function getCredentials() {
   let raw;
@@ -40,126 +51,150 @@ function getCredentials() {
 }
 
 // ── API ─────────────────────────────────────────────────────────────
-async function fetchUsage(token) {
-  const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
+async function apiGet(token, endpoint) {
+  const res = await fetch(`https://api.anthropic.com/api/oauth/${endpoint}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "anthropic-beta": "oauth-2025-04-20",
     },
   });
+  if (res.status === 401) {
+    throw new Error(
+      "Claude credentials rejected — run `claude` to log in again",
+    );
+  }
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
 
 // ── Pacing ──────────────────────────────────────────────────────────
 function computePacing(utilization, resetsAt, cycleHours) {
-  const now = new Date();
-  const reset = new Date(resetsAt);
-  const msLeft = reset.getTime() - now.getTime();
-
-  if (msLeft <= 0) return null;
+  const msLeft = new Date(resetsAt).getTime() - Date.now();
+  if (!Number.isFinite(msLeft) || msLeft <= 0) return null;
 
   const hoursLeft = msLeft / 3_600_000;
-  const hoursElapsed = cycleHours - hoursLeft;
-  const pctElapsed = Math.min(100, (hoursElapsed / cycleHours) * 100);
-  const diff = utilization - pctElapsed;
+  if (!cycleHours) return { hoursLeft, diff: null };
 
-  return { hoursLeft, pctElapsed, diff };
+  const pctElapsed = Math.min(
+    100,
+    ((cycleHours - hoursLeft) / cycleHours) * 100,
+  );
+  return { hoursLeft, diff: utilization - pctElapsed };
 }
 
-// ── Progress bar ────────────────────────────────────────────────────
-function progressBar(usedPct, expectedPct) {
-  const chars = 50;
-  const used = Math.round((usedPct / 100) * chars);
-  const expected = Math.round((expectedPct / 100) * chars);
-
-  const colors = { budget: 47, over: 41, pace: 46, empty: 100 };
-
-  function kindOf(i) {
-    if (i === expected - 1) return "pace";
-    if (i < Math.min(used, expected)) return "budget";
-    if (i < used) return "over";
-    return "empty";
-  }
-
-  let bar = "";
-  for (let c = 0; c < chars; c++) {
-    bar += `\x1b[${colors[kindOf(c)]}m \x1b[0m`;
-  }
-  return bar;
-}
-
-// ── Format countdown ────────────────────────────────────────────────
+// ── Formatting ──────────────────────────────────────────────────────
 function formatCountdown(hours) {
-  const d = Math.floor(hours / 24);
-  const h = Math.floor(hours % 24);
-  const m = Math.round((hours % 1) * 60);
+  const total = Math.round(hours * 60);
+  const d = Math.floor(total / 1440);
+  const h = Math.floor((total % 1440) / 60);
+  const m = total % 60;
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
 
+function formatReset(resetsAt) {
+  const reset = new Date(resetsAt);
+  const clock = reset.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  if (reset.toDateString() === new Date().toDateString()) return clock;
+  const day = reset.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return `${day} ${clock}`;
+}
+
+function formatAhead(diff) {
+  const ahead = diff === null ? 0 : Math.round(diff);
+  return ahead >= 1 ? `${ahead}%` : "";
+}
+
+function labelFor(limit) {
+  if (limit.kind === "session") return "5h";
+  if (limit.kind === "weekly_all") return "7d";
+  return limit.scope?.model?.display_name || limit.kind;
+}
+
 // ── Display ─────────────────────────────────────────────────────────
-function displayWindow(label, utilization, resetsAt, cycleHours) {
-  const pacing = computePacing(utilization, resetsAt, cycleHours);
-  if (!pacing) {
-    console.log(`${label}: ${utilization}% (reset passed)`);
+function displayAccount(profile, limits) {
+  const rows = limits
+    .map((limit) => {
+      const pacing = computePacing(
+        limit.percent,
+        limit.resets_at,
+        CYCLE_HOURS[limit.group],
+      );
+      if (!pacing) return null;
+      return {
+        label: `${labelFor(limit)}:`,
+        pct: `${limit.percent}%`,
+        reset: `resets ${formatReset(limit.resets_at)}`,
+        left: `in ${formatCountdown(pacing.hoursLeft)}`,
+        ahead: formatAhead(pacing.diff),
+      };
+    })
+    .filter(Boolean);
+
+  console.log(
+    `${profile.account.email} ${dim(`[${profile.organization.name}]`)}`,
+  );
+
+  if (!rows.length) {
+    console.log(dim("  no active usage windows"));
     return;
   }
 
-  const { hoursLeft, pctElapsed, diff } = pacing;
+  const width = (key) => Math.max(...rows.map((r) => r[key].length));
+  const w = {
+    label: width("label"),
+    pct: width("pct"),
+    reset: width("reset"),
+    left: width("left"),
+    ahead: width("ahead"),
+  };
 
-  const barWidth = 50;
-  const indent = "    ";
-
-  // Row 1: label + progress bar
-  console.log(`${label}  ${progressBar(utilization, pctElapsed)}`);
-
-  // Row 2: used (left) · over/under (center) · time left (right)
-  const color = diff >= 0 ? "31" : "32";
-  const diffLabel = diff >= 0 ? "over" : "under";
-  const leftStr = `${utilization}% used`;
-  const centerStr = `${Math.abs(diff).toFixed(1)}% ${diffLabel}`;
-  const rightStr = `${formatCountdown(hoursLeft)} left`;
-
-  const totalText = leftStr.length + centerStr.length + rightStr.length;
-  const totalGap = barWidth - totalText;
-  const leftGap = Math.max(1, Math.floor(totalGap / 2));
-  const rightGap = Math.max(1, totalGap - leftGap);
-
-  const centerAnsi = `\x1b[${color}m${centerStr}\x1b[0m`;
-  console.log(
-    `${indent}${leftStr}${" ".repeat(leftGap)}${centerAnsi}${" ".repeat(rightGap)}${rightStr}`,
-  );
+  rows.forEach((row, i) => {
+    const branch = i === rows.length - 1 ? "└" : "├";
+    const pace = row.ahead
+      ? red(`${row.ahead.padStart(w.ahead)} ahead of pace`)
+      : "";
+    console.log(
+      (`  ${branch} ${row.label.padEnd(w.label)} ${row.pct.padStart(w.pct)}   ` +
+        `${dim(row.reset.padEnd(w.reset))}  ${dim(row.left.padEnd(w.left))}  ${pace}`).trimEnd(),
+    );
+  });
 }
 
 // ── Main ────────────────────────────────────────────────────────────
 async function main() {
+  const arg = process.argv[2];
+  if (arg === "-v" || arg === "--version") return console.log(version);
+  if (arg === "-h" || arg === "--help") {
+    return console.log(
+      "ccpace — Claude Code usage pacing dashboard\n\n" +
+        "Usage: ccpace [-h|--help] [-v|--version]\n\n" +
+        "Reads your Claude Code login and prints each usage window with\n" +
+        "how much you've used, when it resets, and whether you're ahead of pace.\n" +
+        "Set NO_COLOR to disable colored output.",
+    );
+  }
+
   const token = getCredentials();
   if (!token) {
-    console.error("No Claude credentials found");
+    console.error("No Claude credentials found — run `claude` to log in");
     process.exit(1);
   }
 
-  const data = await fetchUsage(token);
+  const [usage, profile] = await Promise.all([
+    apiGet(token, "usage"),
+    apiGet(token, "profile"),
+  ]);
 
-  if (data.five_hour) {
-    displayWindow(
-      "5h",
-      data.five_hour.utilization,
-      data.five_hour.resets_at,
-      5,
-    );
-  }
-  if (data.seven_day) {
-    console.log();
-    displayWindow(
-      "7d",
-      data.seven_day.utilization,
-      data.seven_day.resets_at,
-      7 * 24,
-    );
-  }
+  displayAccount(profile, usage.limits || []);
 }
 
 main().catch((err) => {
