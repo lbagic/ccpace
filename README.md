@@ -17,16 +17,20 @@ you@example.com [Your Organization]
 
 A window is only flagged when you're **ahead of pace** — burning it faster than the clock is running it down. Windows you're comfortably under stay quiet.
 
+## Install
+
+`npx` re-resolves the package against the registry every run. If you check more than
+once in a while, install it once and run it as a local command:
+
+```
+npm i -g ccpace
+ccpace
+```
+
+Requires Node >= 18 and an active Claude Code login. `ccpace --help` for flags.
+
 ## How it works
 
 Reads your Claude Code OAuth credentials and hits the usage API. Lists every active limit window — the 5-hour session, the 7-day total, and any model-scoped weekly limits — with how much you've used and when it resets.
 
 Colors are dropped automatically when output is piped, or when `NO_COLOR` is set.
-
-## Install
-
-Requires Node >= 18 and an active Claude Code login.
-
-```
-npm i -g ccpace
-```
