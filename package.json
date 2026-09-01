@@ -4,7 +4,7 @@
   "description": "Claude Code usage pacing dashboard for your terminal",
   "main": "pace.js",
   "bin": {
-    "ccpace": "./pace.js"
+    "ccpace": "pace.js"
   },
   "keywords": [
     "claude",
